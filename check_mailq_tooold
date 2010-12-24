@@ -1,0 +1,132 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Pod::Usage;
+
+use DateTime;
+use DateTime::Format::DateParse;
+
+BEGIN {
+    my $debug_flag = $ENV{SMART_COMMENTS} || $ENV{SMART_DEBUG} || $ENV{SC};
+    if ($debug_flag) {
+        my @p = map { '#'x$_ } ($debug_flag =~ /([345])\s*/g);
+        use UNIVERSAL::require;
+        Smart::Comments->use(@p);
+    }
+}
+
+my $Verbose = 0;
+
+my %EXIT = (
+    OK       => 0,
+    WARNING  => 1,
+    CRITICAL => 2,
+    UNKNOWN  => 3,
+   );
+
+MAIN: {
+    Getopt::Long::Configure("bundling");
+    GetOptions(
+               'warning|w=i'  => \my $warning,
+               'critical|c=i' => \my $critical,
+               'old|o=i'      => \my $too_old_threshold,
+               'readq|q=s'    => \my $read_queue_command,
+               'verbose|v'    => \$Verbose,
+               'help|h|?'     => sub{ pod2usage(-verbose=>1) }) or pod2usage();
+
+    $read_queue_command ||= 'sudo qmail-qread';
+    $warning  ||= 1;
+    $critical ||= 5;
+    $too_old_threshold ||= 5 * 60;
+    ### $read_queue_command
+    ### $warning
+    ### $critical
+    ### $too_old_threshold
+
+    my $now = DateTime->now(time_zone => 'Asia/Tokyo');
+    ### now: $now->iso8601
+
+    my @queue;
+    my $too_old = 0;
+    eval {
+        local $SIG{ALRM} = sub { die "timeout\n" };
+        alarm 3;
+        close STDIN;
+        open my $q, '-|', $read_queue_command or die $!;
+        @queue = <$q>;
+        close $q or die $!;
+        alarm 0;
+    };
+    if ($@) {
+        print "UNKNOWN: $@\n";
+        exit $EXIT{UNKNOWN};
+    }
+
+    for my $q (@queue) {
+        next unless $q =~ /^(\d+\s+[^#]+)\s*#/;
+
+        my $date = $1;
+        ### date row: $date
+
+        my $dt = DateTime::Format::DateParse->parse_datetime($date);
+        ### date parsed: $dt->iso8601
+
+        my $d = $now->epoch - $dt->epoch;
+        ### $d
+
+        if ($d > $too_old_threshold) {
+            $too_old++;
+        }
+    }
+
+    if ($too_old >= $critical) {
+        print "CRITICAL: $too_old >= $critical in mail queue\n";
+        exit $EXIT{CRITICAL};
+    } elsif ($too_old >= $warning) {
+        print "WARNING: $too_old >= $warning in mail queue\n";
+        exit $EXIT{WARNING};
+    } else {
+        print "OK: $too_old in mail queue\n";
+        exit $EXIT{OK};
+    }
+}
+
+__END__
+
+=head1 NAME
+
+B<check_mailq_tooold> - checks the number of TOO OLD message s in the mailq queue
+
+=head1 SYNOPSIS
+
+B<program_name>
+[ (B<-w>|B<--warning>) I<1> ]
+[ (B<-c>|B<--critical>) I<5> ]
+[ (B<-o>|B<--old>) I<300> ]
+[ (B<-q>|B<--readq>) I<sudo qmail-qread> ]
+[ (B<-v>|B<--verbose>) ]
+
+  $ check_mailq_tooold -w 3 -c 10 -o 180 -q 'sudo mailq'
+
+=head1 AUTHOR
+
+HIROSE, Masaaki E<lt>hirose31 _at_ gmail.comE<gt>
+
+=head1 COPYRIGHT & LICENSE
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=cut
+
+# for Emacsen
+# Local Variables:
+# mode: cperl
+# cperl-indent-level: 4
+# indent-tabs-mode: nil
+# coding: utf-8
+# End:
+
+# vi: set ts=4 sw=4 sts=0 :
