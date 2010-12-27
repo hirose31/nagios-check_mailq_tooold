@@ -33,12 +33,14 @@ MAIN: {
                'critical|c=i' => \my $critical,
                'old|o=i'      => \my $too_old_threshold,
                'readq|q=s'    => \my $read_queue_command,
+               'count|n'      => \my $count_only,
                'verbose|v'    => \$Verbose,
                'help|h|?'     => sub{ pod2usage(-verbose=>1) }) or pod2usage();
 
     $read_queue_command ||= 'sudo /var/qmail/bin/qmail-qread';
     $warning  ||= 1;
     $critical ||= 5;
+    $count_only ||= 0;
     $too_old_threshold ||= 5 * 60;
     ### $read_queue_command
     ### $warning
@@ -81,15 +83,20 @@ MAIN: {
         }
     }
 
-    if ($too_old >= $critical) {
-        print "CRITICAL: $too_old >= $critical in mail queue\n";
-        exit $EXIT{CRITICAL};
-    } elsif ($too_old >= $warning) {
-        print "WARNING: $too_old >= $warning in mail queue\n";
-        exit $EXIT{WARNING};
+    if ($count_only) {
+        print "$too_old\n";
+        exit;
     } else {
-        print "OK: $too_old in mail queue\n";
-        exit $EXIT{OK};
+        if ($too_old >= $critical) {
+            print "CRITICAL: $too_old >= $critical in mail queue\n";
+            exit $EXIT{CRITICAL};
+        } elsif ($too_old >= $warning) {
+            print "WARNING: $too_old >= $warning in mail queue\n";
+            exit $EXIT{WARNING};
+        } else {
+            print "OK: $too_old in mail queue\n";
+            exit $EXIT{OK};
+        }
     }
 }
 
